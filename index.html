@@ -185,6 +185,7 @@
     .filial-btn { width:100%; padding:12px 16px; border:1px solid var(--border); border-radius:var(--radius); background:#fff; font-size:14px; font-family:inherit; color:var(--text); cursor:pointer; display:flex; align-items:center; gap:10px; transition:all 0.15s; text-align:left; }
     .filial-btn:hover { border-color:#465EFF; background:#F0F2FF; color:#465EFF; }
     .filial-btn i { font-size:18px; }
+    .custom-periodo { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
     .hidden { display: none !important; }
     @media (max-width: 520px) {
       .topbar { padding: 0 1rem; flex-wrap: wrap; height: auto; padding-top: 10px; padding-bottom: 10px; }
@@ -279,13 +280,19 @@
           <option value="Montanha/ES">Montanha/ES</option>
           <option value="Itabaiana/ES">Itabaiana/ES</option>
         </select>
-        <select class="filter-sel" id="filter-periodo" onchange="render()">
+        <select class="filter-sel" id="filter-periodo" onchange="onPeriodoChange()">
           <option value="">Todo o período</option>
           <option value="hoje">Hoje</option>
           <option value="semana">Esta semana</option>
           <option value="mes">Este mês</option>
           <option value="mes_ant">Mês anterior</option>
+          <option value="custom">Personalizado...</option>
         </select>
+        <div id="custom-periodo" style="display:none;gap:6px;align-items:center;flex-wrap:wrap">
+          <input type="date" id="data-ini" class="filter-sel" onchange="render()" style="font-size:13px;padding:7px 10px" />
+          <span style="font-size:12px;color:#999">até</span>
+          <input type="date" id="data-fim" class="filter-sel" onchange="render()" style="font-size:13px;padding:7px 10px" />
+        </div>
       </div>
       <div class="client-list" id="client-list"></div>
     </div>
@@ -321,15 +328,20 @@
       </div>
     </div>
     <div class="fg hidden" id="motivo-row"><label>Motivo da perda</label>
-      <select id="f-motivo">
+      <select id="f-motivo" onchange="toggleProdFalta()">
         <option value="">Selecionar...</option>
         <option value="preco">Preço</option>
         <option value="concorrente">Foi para concorrente</option>
         <option value="prazo">Prazo de entrega</option>
         <option value="credito">Crédito negado</option>
         <option value="desistiu">Desistiu da compra</option>
+        <option value="sem_produto">Produto não disponível</option>
         <option value="outro">Outro</option>
       </select>
+    </div>
+    <div class="fg hidden" id="prodfalta-row">
+      <label><i class="ti ti-package-off" style="font-size:12px"></i> Qual produto não tinha?</label>
+      <input id="f-prodfalta" placeholder="Ex: Sofá 3 lugares, Geladeira frost free..." />
     </div>
     <div class="entrega-row">
       <div class="fg"><label><i class="ti ti-calendar-check" style="font-size:12px"></i> Data do fechamento</label><input id="f-datafech" type="date" /></div>
@@ -437,24 +449,50 @@ function tsNow() {
 }
 function dateNow() { return new Date().toLocaleDateString('pt-BR'); }
 function stLabel(s) { return {aberto:'Em aberto',negociando:'Negociando',fechado:'Fechado',perdido:'Perdido',retorno:'Retorno agendado'}[s]||s; }
-function motLabel(m) { return {preco:'Preço',concorrente:'Concorrente',prazo:'Prazo',credito:'Crédito negado',desistiu:'Desistiu',outro:'Outro'}[m]||'';}
+function motLabel(m) { return {preco:'Preço',concorrente:'Concorrente',prazo:'Prazo',credito:'Crédito negado',desistiu:'Desistiu',sem_produto:'Produto não disponível',outro:'Outro'}[m]||'';}
 function brl(v) { if (!v) return '—'; return 'R$ '+Number(v).toLocaleString('pt-BR',{minimumFractionDigits:0,maximumFractionDigits:0}); }
 function isGerente() { return USERS[currentUser]?.role === 'gerente'; }
+
+function onPeriodoChange() {
+  const v = document.getElementById('filter-periodo').value;
+  const box = document.getElementById('custom-periodo');
+  if (v === 'custom') {
+    box.style.display = 'flex';
+    // Preencher datas padrão se vazias
+    if (!document.getElementById('data-ini').value) {
+      const hoje = new Date();
+      const primDia = new Date(hoje.getFullYear(), hoje.getMonth(), 1);
+      document.getElementById('data-ini').value = primDia.toISOString().split('T')[0];
+      document.getElementById('data-fim').value = hoje.toISOString().split('T')[0];
+    }
+  } else {
+    box.style.display = 'none';
+  }
+  render();
+}
 
 function periodoFilter(clientes) {
   const p = document.getElementById('filter-periodo')?.value || '';
   if (!p) return clientes;
   const hoje = new Date(); hoje.setHours(0,0,0,0);
+
+  function parseDate(dataCad) {
+    if (!dataCad) return null;
+    const parts = dataCad.split('/');
+    if (parts.length === 3) {
+      const d = new Date(parts[2], parts[1]-1, parts[0]);
+      d.setHours(0,0,0,0);
+      return d;
+    }
+    return null;
+  }
+
   return clientes.filter(cl => {
-    if (!cl.dataCad) return false;
-    // dataCad está em dd/mm/yyyy
-    const parts = cl.dataCad.split('/');
-    if (parts.length < 3) return false;
-    const d = new Date(parts[2], parts[1]-1, parts[0]);
-    d.setHours(0,0,0,0);
+    const d = parseDate(cl.dataCad);
+    if (!d) return false;
     if (p === 'hoje') return d.getTime() === hoje.getTime();
     if (p === 'semana') {
-      const dow = hoje.getDay(); // 0=dom
+      const dow = hoje.getDay();
       const seg = new Date(hoje); seg.setDate(hoje.getDate() - (dow === 0 ? 6 : dow - 1));
       const dom = new Date(seg); dom.setDate(seg.getDate() + 6);
       return d >= seg && d <= dom;
@@ -463,6 +501,16 @@ function periodoFilter(clientes) {
     if (p === 'mes_ant') {
       const ant = new Date(hoje.getFullYear(), hoje.getMonth() - 1, 1);
       return d.getMonth() === ant.getMonth() && d.getFullYear() === ant.getFullYear();
+    }
+    if (p === 'custom') {
+      const ini = document.getElementById('data-ini')?.value;
+      const fim = document.getElementById('data-fim')?.value;
+      if (!ini && !fim) return true;
+      const dIni = ini ? new Date(ini+'T00:00:00') : null;
+      const dFim = fim ? new Date(fim+'T23:59:59') : null;
+      if (dIni && d < dIni) return false;
+      if (dFim && d > dFim) return false;
+      return true;
     }
     return true;
   });
@@ -523,7 +571,7 @@ async function loadFromDB() {
         filial: r.filial||'', produto: r.produto||'', valor: r.valor||'',
         status: r.status||'aberto', motivo: r.motivo||'',
         datafech: r.datafech||'', dataentrega: r.dataentrega||'',
-        dataCad: r.datacad||'', timeline: r.timeline||[]
+        dataCad: r.datacad||'', timeline: r.timeline||[], prodfalta: r.prodfalta||''
       }));
       saveLocal();
       console.log('Carregado do Supabase:', clients.length, 'clientes');
@@ -540,7 +588,7 @@ async function saveClientDB(client) {
     produto: client.produto||'', valor: client.valor ? Number(client.valor) : null,
     status: client.status||'aberto', motivo: client.motivo||'',
     datafech: client.datafech||null, dataentrega: client.dataentrega||null,
-    datacad: client.dataCad||'', timeline: client.timeline||[]
+    datacad: client.dataCad||'', timeline: client.timeline||[], prodfalta: client.prodfalta||''
   };
   const res = await fetch(SUPA_URL + '/rest/v1/clientes', {
     method: 'POST',
@@ -562,7 +610,7 @@ async function updateClientDB(client) {
     produto: client.produto||'', valor: client.valor ? Number(client.valor) : null,
     status: client.status||'aberto', motivo: client.motivo||'',
     datafech: client.datafech||null, dataentrega: client.dataentrega||null,
-    datacad: client.dataCad||'', timeline: client.timeline||[]
+    datacad: client.dataCad||'', timeline: client.timeline||[], prodfalta: client.prodfalta||''
   };
   return await supaFetch('PATCH', `clientes?id=eq.${client.id}`, row);
 }
@@ -653,13 +701,18 @@ function renderMetrics() {
   `;
 }
 function renderList() {
-  const q = (document.getElementById('search-input').value||''
-).toLowerCase();
+  const q = (document.getElementById('search-input').value||'').toLowerCase();
   const st = document.getElementById('filter-status').value;
-  let list = clients.filter(c => {
-    const m = !q || c.nome.toLowerCase().includes(q)||(c.produto||''
-).toLowerCase().includes(q)||(c.contato||''
-).includes(q);
+  const filF = document.getElementById('filter-filial')?.value || '';
+  const myFilial = filialUser();
+  // Filtro de filial
+  const byFilial = myFilial
+    ? clients.filter(c => c.filial === myFilial)
+    : (filF ? clients.filter(c => c.filial === filF) : clients);
+  // Filtro de período SEMPRE aplicado
+  const byPeriodo = periodoFilter(byFilial);
+  let list = byPeriodo.filter(c => {
+    const m = !q || c.nome.toLowerCase().includes(q)||(c.produto||'').toLowerCase().includes(q)||(c.contato||'').includes(q);
     return m && (!st || c.status===st);
   }).sort((a,b) => b.id - a.id);
   const el = document.getElementById('client-list');
@@ -702,6 +755,7 @@ function renderList() {
           <div><div class="dl">Produto de interesse</div><div class="dv">${c.produto||'—'}</div></div>
           <div><div class="dl">Valor estimado</div><div class="dv">${brl(c.valor)}</div></div>
           ${c.status==='perdido'&&c.motivo?`<div><div class="dl">Motivo da perda</div><div class="dv" style="color:#A32D2D">${motLabel(c.motivo)}</div></div>`:''}
+          ${c.status==='perdido'&&c.motivo==='sem_produto'&&c.prodfalta?`<div><div class="dl">Produto em falta</div><div class="dv" style="color:#633806"><i class="ti ti-package-off" style="font-size:12px"></i> ${c.prodfalta}</div></div>`:''}`
           ${c.filial?`<div><div class="dl">Filial</div><div class="dv"><i class="ti ti-map-pin" style="font-size:12px;color:#465EFF"></i> ${c.filial}</div></div>`:''}
           <div style="grid-column:1/-1"><div class="dl">Última atualização</div><div class="dv">${lastUp||'—'}</div></div>
         </div>
@@ -742,6 +796,8 @@ function openModal() {
   document.getElementById('f-status').value = 'aberto';
   document.getElementById('f-motivo').value = '';
   document.getElementById('motivo-row').classList.add('hidden');
+  document.getElementById('prodfalta-row').classList.add('hidden');
+  document.getElementById('f-prodfalta').value = '';
   document.getElementById('f-datafech').value = '';
   // Filial: vendedor tem filial fixa, gerente escolhe
   const fl = filialUser();
@@ -754,6 +810,11 @@ function openModal() {
 }
 function closeModal() { document.getElementById('modal-overlay').classList.add('hidden'); }
 function closeModalBg(e) { if (e.target.id==='modal-overlay') closeModal(); }
+function toggleProdFalta() {
+  const m = document.getElementById('f-motivo').value;
+  document.getElementById('prodfalta-row').classList.toggle('hidden', m !== 'sem_produto');
+}
+
 function toggleMotivo() {
   document.getElementById('motivo-row').classList.toggle('hidden', document.getElementById('f-status').value !== 'perdido');
 }
@@ -776,6 +837,8 @@ function editClient(id) {
 ;
   document.getElementById('f-obs').value = '';
   document.getElementById('f-datafech').value = c.datafech||'';
+  document.getElementById('f-prodfalta').value = c.prodfalta||'';
+  document.getElementById('prodfalta-row').classList.toggle('hidden', c.motivo !== 'sem_produto');
   const flE = filialUser();
   const fSelE = document.getElementById('f-filial');
   fSelE.value = c.filial || flE || '';
@@ -791,6 +854,7 @@ function saveClient() {
   const obs = document.getElementById('f-obs').value.trim();
   const nomeU = USERS[currentUser]?.nome||currentUser;
   const datafech = document.getElementById('f-datafech').value;
+  const prodfalta = document.getElementById('f-prodfalta').value.trim();
   const filial = document.getElementById('f-filial').value || filialUser() || '';
   const dataentrega = document.getElementById('f-dataentrega').value;
   if (editId !== null) {
@@ -816,7 +880,7 @@ function saveClient() {
       produto: document.getElementById('f-produto').value.trim(),
       valor: document.getElementById('f-valor').value,
       status: novoStatus, motivo: document.getElementById('f-motivo').value,
-      datafech: datafech || c.datafech, dataentrega: dataentrega || c.dataentrega, filial: filial || c.filial };
+      datafech: datafech || c.datafech, dataentrega: dataentrega || c.dataentrega, filial: filial || c.filial, prodfalta: prodfalta || c.prodfalta };
     toast('Cliente atualizado!', 'blue');
   } else {
     const tl = [{ type:'reg', date: tsNow(), user: nomeU, text: 'Cliente cadastrado' + (obs ? ' — '+obs : '') }];
@@ -826,7 +890,7 @@ function saveClient() {
       produto: document.getElementById('f-produto').value.trim(),
       valor: document.getElementById('f-valor').value,
       status: novoStatus, motivo: document.getElementById('f-motivo').value,
-      datafech: datafech, dataentrega: dataentrega, filial: filial,
+      datafech: datafech, dataentrega: dataentrega, filial: filial, prodfalta: prodfalta,
       dataCad: dateNow(), timeline: tl });
     toast('Cliente cadastrado!', 'blue');
     saveClientDB(clients[clients.length-1]);
@@ -847,8 +911,8 @@ function wpp(contato) {
 }
 function exportCSV() {
   if (!clients.length) { alert('Nenhum cliente para exportar.'); return; }
-  const cols = ['nome','contato','vendedor','filial','produto','valor','status','motivo','dataCad'];
-  const hdr = ['Nome','Contato','Vendedor','Filial','Produto','Valor','Status','Motivo perda','Data cadastro','Histórico'];
+  const cols = ['nome','contato','vendedor','filial','produto','valor','status','motivo','prodfalta','dataCad'];
+  const hdr = ['Nome','Contato','Vendedor','Filial','Produto','Valor','Status','Motivo perda','Produto em falta','Data cadastro','Histórico'];
   const rows = clients.map(c => {
     const base = cols.map(k => '"'+(c[k]||''
 ).toString().replace(/"/g,'""')+'"');
