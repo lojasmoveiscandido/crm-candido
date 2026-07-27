@@ -197,7 +197,7 @@
 </head>
 <body>
 
-<div class="loading-screen" id="loading-screen">
+<div class="loading-screen hidden" id="loading-screen">
   <div class="spinner"></div>
   <span style="font-size:13px;color:#999">Carregando...</span>
 </div>
@@ -619,6 +619,8 @@ async function deleteClientDB(id) {
 }
 // ─────────────────────────────────────────────────────────────────────────────
 function init() {
+  // Esconde loading imediatamente
+  document.getElementById('loading-screen').classList.add('hidden');
   const saved = localStorage.getItem('crm_user');
   const savedFilial = localStorage.getItem('crm_session_filial');
   if (saved && USERS[saved]) {
@@ -627,8 +629,6 @@ function init() {
       sessionFilial = savedFilial === '__todas__' ? null : savedFilial;
       showApp();
     } else if (USERS[saved].role === 'gerente') {
-      // Gerente sem filial salva — pede pra escolher
-      document.getElementById('loading-screen').classList.add('hidden');
       document.getElementById('login-wrap').classList.remove('hidden');
       document.getElementById('login-step1').style.display = 'none';
       document.getElementById('login-nome').textContent = USERS[saved].nome;
@@ -638,27 +638,24 @@ function init() {
       showApp();
     }
   } else {
-    document.getElementById('loading-screen').classList.add('hidden');
     document.getElementById('login-wrap').classList.remove('hidden');
   }
 }
 async function showApp() {
-  document.getElementById('loading-screen').classList.remove('hidden');
-  document.getElementById('login-wrap').classList.add('hidden');
-  // Carrega cache local imediatamente (evita tela em branco)
-  loadLocal();
-  // Tenta atualizar do Supabase em paralelo
-  loadFromDB().then(ok => {
-    if (ok) { render(); updateNotifBadge(); }
-  });
+  // Esconde login e loading imediatamente
   document.getElementById('loading-screen').classList.add('hidden');
+  document.getElementById('login-wrap').classList.add('hidden');
   document.getElementById('app').classList.add('visible');
+  // Carrega cache local primeiro — aparece instantâneo
+  loadLocal();
   const u = USERS[currentUser];
   const badge = document.getElementById('user-badge');
   badge.textContent = (u?.nome||currentUser) + (u?.role==='gerente'?' · '+(sessionFilial||'Todas as filiais'):u?.filial?' · '+u.filial:'');
   if (u?.role==='gerente') badge.classList.add('gerente');
   render();
   updateNotifBadge();
+  // Busca dados do Supabase em background sem travar a tela
+  loadFromDB().then(ok => { if (ok) { render(); updateNotifBadge(); } });
   // Mostrar filtro filial e botão trocar só pro gerente
   const ff = document.getElementById('filter-filial');
   if (ff) ff.style.display = isGerente() ? '' : 'none';
