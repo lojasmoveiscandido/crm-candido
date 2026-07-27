@@ -654,8 +654,6 @@ async function showApp() {
   if (u?.role==='gerente') badge.classList.add('gerente');
   render();
   updateNotifBadge();
-  // Busca dados do Supabase em background sem travar a tela
-  loadFromDB().then(ok => { if (ok) { render(); updateNotifBadge(); } });
   // Mostrar filtro filial e botão trocar só pro gerente
   const ff = document.getElementById('filter-filial');
   if (ff) ff.style.display = isGerente() ? '' : 'none';
